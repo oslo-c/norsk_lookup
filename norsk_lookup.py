@@ -14,18 +14,13 @@ def main():
     root.withdraw()  # background utility; no main window
 
     def on_hotkey():
-        print("Hotkey triggered!")
         # Runs on the hotkey thread; schedule work on Tk's thread.
         def _do():
-            print("Getting selection...")
             text = copy_selection()
-            print(f"Got text: '{text}'")
             if text:
                 # For now, just show the selection itself.
                 # Later: formatted = lookup_and_format(text)
                 show_popup(root, text)
-            else:
-                print("No text selected")
         root.after(0, _do)
 
     runner: HotkeyRunner = start_alt_n_hotkey(on_hotkey)
