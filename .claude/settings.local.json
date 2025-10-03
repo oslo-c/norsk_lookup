@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(del debug.log)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

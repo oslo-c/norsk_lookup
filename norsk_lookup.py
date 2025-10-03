@@ -1,4 +1,4 @@
-# Entry point: registers Alt+N and runs the Tk main loop.
+# Entry point: registers Alt+N hotkey and runs the Tk main loop.
 
 import sys
 import signal
@@ -7,19 +7,20 @@ import tkinter as tk
 from gui import show_popup
 from hotkey import start_alt_n_hotkey, HotkeyRunner
 from selection import copy_selection
-# from dictionary import lookup_and_format  # plug in later
 
 def main():
     root = tk.Tk()
     root.withdraw()  # background utility; no main window
 
     def on_hotkey():
+        with open("debug.log", "a") as f:
+            f.write("HOTKEY TRIGGERED\n")
         # Runs on the hotkey thread; schedule work on Tk's thread.
         def _do():
             text = copy_selection()
+            with open("debug.log", "a") as f:
+                f.write(f"Got text: {repr(text)}\n")
             if text:
-                # For now, just show the selection itself.
-                # Later: formatted = lookup_and_format(text)
                 show_popup(root, text)
         root.after(0, _do)
 

@@ -1,136 +1,159 @@
 """
-hotkey.py — Global hotkey registration via Win32 RegisterHotKey.
+hotkey.py — Global hotkey detection using low-level keyboard hook.
 
 Exports:
     start_alt_n_hotkey(callback) -> HotkeyRunner
-        Registers Alt+N system-wide. On press, calls `callback()`.
+        Detects Alt+P+N pressed simultaneously. On press, calls `callback()`.
 
 Notes:
+- Uses low-level keyboard hook to detect Alt+P+N all pressed at the same time.
 - To receive hotkeys while an elevated window is focused, run this program as admin.
-- If Alt+N is already taken by another app, start_alt_n_hotkey raises RuntimeError.
 """
 
 import threading
-import win32con
 import win32gui
+import win32con
 import win32api
+from ctypes import windll, CFUNCTYPE, c_int, c_void_p, byref
+from ctypes.wintypes import DWORD, WPARAM, LPARAM, MSG
 
-# Constants
-MOD_ALT = win32con.MOD_ALT
-VK_N = 0x4E  # 'N'
-_HOTKEY_ID = 1
 
-# Optional: reduce key-repeat storms (define MOD_NOREPEAT if not present)
-try:
-    MOD_NOREPEAT = win32con.MOD_NOREPEAT  # available on newer pywin32
-except AttributeError:
-    MOD_NOREPEAT = 0x4000  # documented Win32 flag
+# Virtual key codes
+VK_MENU = 0x12  # Alt key
+VK_P = 0x50
+VK_N = 0x4E
+
+# Hook constants
+WH_KEYBOARD_LL = 13
+WM_KEYDOWN = 0x0100
+WM_KEYUP = 0x0101
+WM_SYSKEYDOWN = 0x0104
+WM_SYSKEYUP = 0x0105
+
+# Keyboard hook callback type
+HOOKPROC = CFUNCTYPE(c_int, c_int, WPARAM, LPARAM)
 
 
 class HotkeyRunner:
-    """Holds the worker thread and window handle; call .stop() to unregister/quit."""
-    def __init__(self, thread: threading.Thread, hwnd: int):
+    """Holds the keyboard hook; call .stop() to unregister."""
+    def __init__(self, thread, hook_id):
         self._thread = thread
-        self._hwnd = hwnd
+        self._hook_id = hook_id
+        self._stop_event = threading.Event()
 
     def stop(self) -> None:
-        """Unregisters the hotkey and shuts down the message loop thread."""
-        hwnd = self._hwnd
-        self._hwnd = 0
-        try:
-            if hwnd:
-                # Unregister first; then close the window and quit the message loop.
-                try:
-                    win32gui.UnregisterHotKey(hwnd, _HOTKEY_ID)
-                except Exception:
-                    pass
-                try:
-                    win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
-                except Exception:
-                    pass
-        finally:
-            if self._thread and self._thread.is_alive():
-                # Give the message pump a moment to exit cleanly
-                self._thread.join(timeout=1.0)
+        """Unregisters the keyboard hook and stops the thread."""
+        self._stop_event.set()
+        if self._hook_id:
+            try:
+                windll.user32.UnhookWindowsHookEx(self._hook_id)
+            except:
+                pass
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
 
 
 def start_alt_n_hotkey(callback) -> HotkeyRunner:
     """
-    Registers Alt+N globally and invokes `callback()` on each press.
-    Runs the Win32 message loop in a daemon thread. Returns a HotkeyRunner.
-    Raises RuntimeError if Alt+N is already registered by another app.
+    Detects Alt+P+N pressed simultaneously and invokes `callback()`.
+    Returns a HotkeyRunner.
     """
-    state = {"hwnd": 0, "error": None}  # filled by thread after CreateWindow
+    state = {
+        "hook_id": None,
+        "error": None,
+        "keys_pressed": set(),
+        "triggered": False
+    }
+    stop_event = threading.Event()
 
     def thread_proc():
-        # Window class and procedure
-        wc = win32gui.WNDCLASS()
-        wc.hInstance = win32api.GetModuleHandle(None)
-        wc.lpszClassName = "NorskLookupHotkeyWnd"
-
-        def _wndproc(hWnd, msg, wParam, lParam):
-            if msg == win32con.WM_HOTKEY and wParam == _HOTKEY_ID:
-                try:
-                    callback()
-                except Exception:
-                    # Swallow to keep the pump alive
-                    pass
-                return 0
-            elif msg == win32con.WM_DESTROY:
-                win32gui.PostQuitMessage(0)
-                return 0
-            return win32gui.DefWindowProc(hWnd, msg, wParam, lParam)
-
-        wc.lpfnWndProc = _wndproc
-        atom = win32gui.RegisterClass(wc)
-
-        # Hidden message-only window works too, but a normal hidden window is fine
-        hwnd = win32gui.CreateWindow(
-            atom, "NorskLookupHidden", 0,
-            0, 0, 0, 0,
-            0, 0, wc.hInstance, None
-        )
-        state["hwnd"] = hwnd
-
-        # Try to register Alt+N (with MOD_NOREPEAT if available)
-        mods = MOD_ALT | MOD_NOREPEAT
-        try:
-            ok = win32gui.RegisterHotKey(hwnd, _HOTKEY_ID, mods, VK_N)
-            if not ok:
-                state["error"] = RuntimeError("Alt+N is already registered by another app")
-                return
-        except Exception as e:
-            state["error"] = RuntimeError(f"Failed to register Alt+N: {e}")
+        # Keep reference to avoid garbage collection
+        def low_level_keyboard_proc(nCode, wParam, lParam):
+            # CRITICAL: Always call CallNextHookEx to prevent blocking keyboard input
+            # Must be done before ANY processing to ensure keyboard events propagate
             try:
-                win32gui.DestroyWindow(hwnd)
-            except Exception:
+                if nCode >= 0:
+                    try:
+                        # Read the virtual key code from lParam (first DWORD)
+                        vk = DWORD.from_address(lParam).value
+
+                        # Track key presses
+                        if wParam in (WM_KEYDOWN, WM_SYSKEYDOWN):
+                            state["keys_pressed"].add(vk)
+
+                            # Check if Alt is held down
+                            alt_pressed = windll.user32.GetAsyncKeyState(VK_MENU) & 0x8000
+                            p_pressed = windll.user32.GetAsyncKeyState(VK_P) & 0x8000
+                            n_pressed = windll.user32.GetAsyncKeyState(VK_N) & 0x8000
+
+                            # If all three keys are pressed and we haven't triggered yet
+                            if alt_pressed and p_pressed and n_pressed and not state["triggered"]:
+                                state["triggered"] = True
+                                print("Alt+P+N detected!")
+                                try:
+                                    callback()
+                                except Exception as e:
+                                    print(f"Callback error: {e}")
+
+                        elif wParam in (WM_KEYUP, WM_SYSKEYUP):
+                            state["keys_pressed"].discard(vk)
+                            # Reset trigger when any of the keys is released
+                            if vk in (VK_MENU, VK_P, VK_N):
+                                state["triggered"] = False
+                    except Exception as e:
+                        print(f"Hook processing error: {e}")
+            except:
                 pass
+
+            # ALWAYS call the next hook, regardless of what happened above
+            return windll.user32.CallNextHookEx(state["hook_id"], nCode, wParam, lParam)
+
+        # Create the hook callback and keep it alive
+        hook_proc = HOOKPROC(low_level_keyboard_proc)
+        state["hook_proc"] = hook_proc  # Prevent garbage collection
+
+        # Install the hook
+        try:
+            hook_id = windll.user32.SetWindowsHookExW(
+                WH_KEYBOARD_LL,
+                hook_proc,
+                None,  # NULL for low-level hooks
+                0
+            )
+
+            if not hook_id:
+                error_code = windll.kernel32.GetLastError()
+                state["error"] = RuntimeError(f"Failed to install keyboard hook (error {error_code})")
+                return
+
+            state["hook_id"] = hook_id
+            print("Registered low-level keyboard hook for Alt+P+N")
+        except Exception as e:
+            state["error"] = RuntimeError(f"Exception installing hook: {e}")
             return
 
-        # Block here handling messages until WM_QUIT
-        try:
-            win32gui.PumpMessages()
-        finally:
-            # Ensure cleanup if the loop exits unexpectedly
-            try:
-                win32gui.UnregisterHotKey(hwnd, _HOTKEY_ID)
-            except Exception:
-                pass
-            try:
-                win32gui.DestroyWindow(hwnd)
-            except Exception:
-                pass
+        # Message loop
+        msg = MSG()
+        while not stop_event.is_set():
+            result = windll.user32.PeekMessageW(byref(msg), None, 0, 0, 1)  # PM_REMOVE = 1
+            if result:
+                windll.user32.TranslateMessage(byref(msg))
+                windll.user32.DispatchMessageW(byref(msg))
+            else:
+                win32api.Sleep(10)
 
     t = threading.Thread(target=thread_proc, daemon=True)
     t.start()
 
-    # Wait briefly for hwnd to be created so .stop() can work immediately
+    # Wait for hook installation
     for _ in range(100):
-        if state["hwnd"] or state["error"]:
+        if state["hook_id"] or state["error"]:
             break
         win32api.Sleep(10)
 
     if state["error"]:
         raise state["error"]
 
-    return HotkeyRunner(thread=t, hwnd=state["hwnd"])
+    runner = HotkeyRunner(t, state["hook_id"])
+    runner._stop_event = stop_event
+    return runner
