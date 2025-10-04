@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """
-Text Display Utility - Shows highlighted text in popup without touching clipboard.
+Norwegian-English Dictionary Lookup - Shows translations in popup.
 
 This is the main entry point that coordinates all components.
 """
 
 import sys
 import tkinter as tk
+import threading
 
 from text_capture import TextCapture
-from popup_ui import PopupManager, PopupConfig
+from popup_ui import PopupManager, PopupConfig, MonitorHelper
 from hotkey_monitor import HotkeyMonitor, Hotkey, VirtualKeys
+from lexin_api import LexinAPI
 
 
 class TextDisplayApp:
@@ -31,6 +33,7 @@ class TextDisplayApp:
         # Initialize components
         self.text_capture = TextCapture()
         self.popup_manager = PopupManager(self.root, popup_config)
+        self.lexin_api = LexinAPI()
         
         # Setup hotkey (default: Alt+P+N)
         if hotkey is None:
@@ -48,8 +51,33 @@ class TextDisplayApp:
         text = self.text_capture.get_selected_text()
         
         if text:
-            # Show popup on main thread
-            self.root.after(0, lambda: self.popup_manager.show(text))
+            # Clean up the text - get first word if multiple words selected
+            word = text.strip().split()[0] if text.strip() else text.strip()
+            
+            # Capture cursor position immediately
+            cursor_pos = MonitorHelper.get_cursor_position()
+            
+            # Show immediate "Thinking..." popup at the captured position
+            self.root.after(0, lambda: self.popup_manager.show("Thinking...", position=cursor_pos))
+            
+            # Look up translation in background thread
+            def lookup_translation():
+                # Look up in Lexin dictionary
+                translations = self.lexin_api.lookup(word, max_results=3)
+                
+                # Format the display text
+                if translations:
+                    display_text = self.lexin_api.format_results(translations, include_definitions=False)
+                else:
+                    # Fallback to showing the selected text if no translation found
+                    display_text = f"'{word}' - No translation found"
+                
+                # Update popup on main thread (without passing position - it will reuse the stored one)
+                self.root.after(0, lambda: self.popup_manager.show(display_text))
+            
+            # Start lookup in background thread
+            thread = threading.Thread(target=lookup_translation, daemon=True)
+            thread.start()
     
     def run(self):
         """Run the application."""
@@ -68,9 +96,9 @@ class TextDisplayApp:
     
     def _print_startup_info(self):
         """Print startup information to console."""
-        print("Text Display Utility Started")
+        print("Norwegian-English Dictionary Lookup Started")
         print(f"Hotkey: {self.hotkey.description}")
-        print("Select text and press the hotkey to display it")
+        print("Select a Norwegian word and press the hotkey to translate it")
         print("Press Ctrl+C to exit")
         print("-" * 40)
     

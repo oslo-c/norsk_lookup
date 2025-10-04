@@ -126,23 +126,34 @@ class PopupManager:
         self.root = root
         self.config = config or PopupConfig()
         self.current_popup = None
+        self.fixed_position = None  # Store fixed position for updates
     
-    def show(self, text: str):
+    def show(self, text: str, position: Optional[Tuple[int, int]] = None):
         """
-        Display text in a popup near the cursor.
+        Display text in a popup near the cursor or at a fixed position.
         
         Args:
             text: The text to display
+            position: Optional (x, y) position to use instead of cursor position.
+                     If provided, this position will be reused for subsequent updates.
         """
         # Close existing popup
+        was_updating = self.current_popup is not None
         self.close_current()
         
         if not text:
             return
         
+        # Use provided position or stored position, otherwise get cursor position
+        if position is not None:
+            self.fixed_position = position
+        elif not was_updating:
+            # Only reset position if this is a new popup (not an update)
+            self.fixed_position = None
+        
         # Create and configure popup
         popup = self._create_popup(text)
-        self._position_popup(popup)
+        self._position_popup(popup, self.fixed_position)
         self._setup_focus_tracking(popup)
         self._setup_click_to_close(popup)
         
@@ -195,12 +206,16 @@ class PopupManager:
         
         return popup
     
-    def _position_popup(self, popup: tk.Toplevel):
-        """Position popup near cursor, ensuring it stays on screen."""
+    def _position_popup(self, popup: tk.Toplevel, fixed_position: Optional[Tuple[int, int]] = None):
+        """Position popup near cursor or at fixed position, ensuring it stays on screen."""
         popup.update_idletasks()
         
-        # Get actual cursor position using Windows API
-        cursor_x, cursor_y = MonitorHelper.get_cursor_position()
+        if fixed_position:
+            # Use the fixed position
+            cursor_x, cursor_y = fixed_position
+        else:
+            # Get actual cursor position using Windows API
+            cursor_x, cursor_y = MonitorHelper.get_cursor_position()
         
         # Find which monitor the cursor is on
         monitor = MonitorHelper.get_monitor_at_point(cursor_x, cursor_y)
