@@ -47,23 +47,30 @@ class TextDisplayApp:
     
     def _on_hotkey_pressed(self):
         """Handle hotkey activation."""
+        print("DEBUG: Hotkey pressed!")  # Debug output
+        
         # Get selected text
         text = self.text_capture.get_selected_text()
+        print(f"DEBUG: Captured text: {text}")  # Debug output
         
         if text:
             # Clean up the text - get first word if multiple words selected
             word = text.strip().split()[0] if text.strip() else text.strip()
+            print(f"DEBUG: Processing word: {word}")  # Debug output
             
             # Capture cursor position immediately
             cursor_pos = MonitorHelper.get_cursor_position()
+            print(f"DEBUG: Cursor position: {cursor_pos}")  # Debug output
             
             # Show immediate "Thinking..." popup at the captured position
             self.root.after(0, lambda: self.popup_manager.show("Thinking...", position=cursor_pos))
             
             # Look up translation in background thread
             def lookup_translation():
+                print("DEBUG: Looking up translation...")  # Debug output
                 # Look up in Lexin dictionary
                 translations = self.lexin_api.lookup(word, max_results=3)
+                print(f"DEBUG: Found {len(translations)} translations")  # Debug output
                 
                 # Format the display text
                 if translations:
@@ -72,12 +79,15 @@ class TextDisplayApp:
                     # Fallback to showing the selected text if no translation found
                     display_text = f"'{word}' - No translation found"
                 
+                print(f"DEBUG: Showing result: {display_text}")  # Debug output
                 # Update popup on main thread (without passing position - it will reuse the stored one)
                 self.root.after(0, lambda: self.popup_manager.show(display_text))
             
             # Start lookup in background thread
             thread = threading.Thread(target=lookup_translation, daemon=True)
             thread.start()
+        else:
+            print("DEBUG: No text captured")  # Debug output
     
     def run(self):
         """Run the application."""
@@ -96,11 +106,14 @@ class TextDisplayApp:
     
     def _print_startup_info(self):
         """Print startup information to console."""
+        print("=" * 50)
         print("Norwegian-English Dictionary Lookup Started")
+        print("=" * 50)
         print(f"Hotkey: {self.hotkey.description}")
         print("Select a Norwegian word and press the hotkey to translate it")
+        print("Monitoring for hotkey presses...")
         print("Press Ctrl+C to exit")
-        print("-" * 40)
+        print("=" * 50)
     
     def _cleanup(self):
         """Clean up resources."""
@@ -111,23 +124,7 @@ class TextDisplayApp:
 def main():
     """Entry point for the application."""
     try:
-        # You can customize the app here
-        # Example with custom hotkey:
-        # custom_hotkey = Hotkey(
-        #     keys=(VirtualKeys.CTRL, VirtualKeys.SHIFT, VirtualKeys.T),
-        #     description="Ctrl+Shift+T"
-        # )
-        # app = TextDisplayApp(hotkey=custom_hotkey)
-        
-        # Example with custom popup styling:
-        # custom_config = PopupConfig(
-        #     bg_color="#2d2d2d",
-        #     fg_color="#00ff00",
-        #     font_size=12
-        # )
-        # app = TextDisplayApp(popup_config=custom_config)
-        
-        # Default configuration
+        # Start the application
         app = TextDisplayApp()
         app.run()
         

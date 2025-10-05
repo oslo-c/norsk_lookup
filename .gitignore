@@ -19,6 +19,9 @@ dist/
 *.spec
 *.manifest
 
+# Inno Setup
+Output/
+
 # IDE
 .vscode/
 .idea/
