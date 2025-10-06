@@ -3,12 +3,12 @@
 
 #define MyAppName "Norwegian Dictionary Lookup"
 #define MyAppVersion "1.0"
-#define MyAppPublisher "Ethan Hamilton"
+#define MyAppPublisher "Your Name"
 #define MyAppExeName "NorwegianDictionary.exe"
 
 [Setup]
 ; Basic app info
-AppId={{3E443C3C-DE85-423F-8C82-7968937BB0D2}
+AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -35,7 +35,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "startup"; Description: "Start automatically when Windows starts (Recommended)"; GroupDescription: "Startup Options:"
 
 [Files]
-Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 ; No shortcuts created - program runs in background only
