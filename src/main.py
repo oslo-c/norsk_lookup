@@ -6,6 +6,22 @@ This is the main entry point that coordinates all components.
 """
 
 import sys
+import os
+
+# Redirect stderr to a log file when running without console (must be FIRST)
+if getattr(sys, 'frozen', False):
+    log_dir = os.path.join(os.environ.get('TEMP', '.'), 'NorwegianDict')
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, 'error.log')
+    sys.stderr = open(log_file, 'w', encoding='utf-8')
+    sys.stdout = sys.stderr
+else:
+    # Development mode - fix encoding for console
+    if sys.stdout:
+        sys.stdout.reconfigure(encoding='utf-8')
+    if sys.stderr:
+        sys.stderr.reconfigure(encoding='utf-8')
+
 import tkinter as tk
 import threading
 import webbrowser
