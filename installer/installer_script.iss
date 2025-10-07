@@ -1,14 +1,15 @@
 ; Inno Setup Script for Norwegian Dictionary Lookup
 ; This creates a professional installer for the application
 
+; NOTE: Update the version number in src/version.py before building!
 #define MyAppName "Norwegian Dictionary Lookup"
-#define MyAppVersion "1.0"
-#define MyAppPublisher "Your Name"
+#define MyAppVersion "1.0.0"
+#define MyAppPublisher "Ethan Hamilton"
 #define MyAppExeName "NorwegianDictionary.exe"
 
 [Setup]
 ; Basic app info
-AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+AppId={{1bf7047b-f4e4-43a4-afc1-a6d7e7053b93}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -59,7 +60,8 @@ begin
            '2. Try it: Select a Norwegian word' + #13#10 +
            '3. Press Alt+P+N to see the translation' + #13#10 + #13#10 +
            'The program runs in the background - you won''t see a window.' + #13#10 +
-           'It''s ready whenever you need it!',
+           'It''s ready whenever you need it!' + #13#10 + #13#10 +
+           'The app will automatically check for updates once per day.',
            mbInformation, MB_OK);
   end;
 end;
